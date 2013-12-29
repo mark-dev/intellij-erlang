@@ -1,18 +1,18 @@
 /*
- * Copyright 2012-2013 Sergey Ignatov
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+* Copyright 2012-2013 Sergey Ignatov
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 
 package org.intellij.erlang;
 
@@ -21,7 +21,7 @@ import com.intellij.codeInsight.completion.util.ParenthesesInsertHandler;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.lang.ASTNode;
-import com.intellij.openapi.actionSystem.IdeActions;
+import com.intellij.lang.parser.GeneratedParserUtilBase;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.module.Module;
@@ -33,13 +33,9 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
-import com.intellij.openapi.vfs.VfsUtil;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
-import com.intellij.psi.PsiComment;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiFileFactory;
 import com.intellij.psi.codeStyle.CodeStyleSettingsManager;
 import com.intellij.psi.formatter.FormatterUtil;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
@@ -56,14 +52,13 @@ import org.intellij.erlang.facet.ErlangFacet;
 import org.intellij.erlang.formatter.settings.ErlangCodeStyleSettings;
 import org.intellij.erlang.parser.ErlangLexer;
 import org.intellij.erlang.parser.ErlangParserUtil;
-import org.intellij.erlang.parser.GeneratedParserUtilBase;
 import org.intellij.erlang.psi.*;
 import org.intellij.erlang.psi.impl.ErlangFileImpl;
 import org.intellij.erlang.psi.impl.ErlangPsiImplUtil;
 import org.intellij.erlang.psi.impl.ErlangVariableReferenceImpl;
-import org.intellij.erlang.types.ErlangExpressionType;
 import org.intellij.erlang.rebar.util.RebarConfigUtil;
 import org.intellij.erlang.sdk.ErlangSystemUtil;
+import org.intellij.erlang.types.ErlangExpressionType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -74,10 +69,10 @@ import static com.intellij.patterns.PlatformPatterns.psiElement;
 import static com.intellij.patterns.StandardPatterns.instanceOf;
 
 /**
- * @author ignatov
- */
+* @author ignatov
+*/
 public class ErlangCompletionContributor extends CompletionContributor {
-  public static final int MODULE_PRIORITY = 10;
+  public static final int MODULE_PRIORITY = -15;
   public static final int KEYWORD_PRIORITY = -10;
   public static final int MODULE_FUNCTIONS_PRIORITY = -4;
   public static final int BIF_PRIORITY = -5;
@@ -186,22 +181,12 @@ public class ErlangCompletionContributor extends CompletionContributor {
             for (String keyword : suggestKeywords(position)) {
               result.addElement(createKeywordLookupElement(keyword));
             }
-            int invocationCount = parameters.getInvocationCount();
-            boolean moduleCompletion = invocationCount > 0 && invocationCount % 2 == 0;
             //noinspection unchecked
             boolean inside = PsiTreeUtil.getParentOfType(position, ErlangClauseBody.class, ErlangFunTypeSigs.class, ErlangTypeRef.class) != null;
-            if ((inside || inConsole) && moduleCompletion) {
-              suggestModules(result, position, true);
-            }
-            else {
-              //noinspection unchecked
-              if (PsiTreeUtil.getParentOfType(position, ErlangImportDirective.class, ErlangImportFunctions.class) instanceof ErlangImportDirective) {
-                suggestModules(result, position, false);
-              }
-              else {
-                String shortcut = getActionShortcut(IdeActions.ACTION_CODE_COMPLETION);
-                CompletionService.getCompletionService().setAdvertisementText(shortcut + " to activate module name completion");
-              }
+            //noinspection unchecked
+            boolean insideImport = PsiTreeUtil.getParentOfType(position, ErlangImportDirective.class, ErlangImportFunctions.class) instanceof ErlangImportDirective;
+            if (inside || inConsole || insideImport) {
+              suggestModules(result, position, !insideImport);
             }
           }
           if (colonQualified == null && parent instanceof ErlangExpression && (ErlangPsiImplUtil.inFunction(position) || inConsole)) {
@@ -405,7 +390,7 @@ public class ErlangCompletionContributor extends CompletionContributor {
       ErlangFile rebarConfigPsi = RebarConfigUtil.getRebarConfig(file.getProject(), otpAppRoot);
       if (rebarConfigPsi != null && otpAppRoot != null) {
         for (String relativeIncludePath : ContainerUtil.reverse(RebarConfigUtil.getIncludePaths(rebarConfigPsi))) {
-          VirtualFile includePath = VfsUtil.findRelativeFile(relativeIncludePath, otpAppRoot);
+          VirtualFile includePath = VfsUtilCore.findRelativeFile(relativeIncludePath, otpAppRoot);
           result.addAll(getModulePathLookupElements(includePath, includeOwner, includeText));
         }
       }
@@ -448,7 +433,7 @@ public class ErlangCompletionContributor extends CompletionContributor {
     if (split.length != 0) {
       int joinEndIndex = includeText.endsWith("/") ? split.length : split.length - 1;
       String childPrefix = joinEndIndex == split.length ? "" : split[split.length - 1];
-      VirtualFile directory = VfsUtil.findRelativeFile(StringUtil.join(split, 0, joinEndIndex, "/"), searchRoot);
+      VirtualFile directory = VfsUtilCore.findRelativeFile(StringUtil.join(split, 0, joinEndIndex, "/"), searchRoot);
       VirtualFile[] children = directory != null ? directory.getChildren() : null;
 
       if (children == null) return;
